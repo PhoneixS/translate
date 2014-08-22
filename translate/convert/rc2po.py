@@ -115,10 +115,10 @@ def main(argv=None):
     DEFAULTCHARSET = "cp1252"
     parser.add_option("", "--charset", dest="charset", default=DEFAULTCHARSET,
         help="charset to use to decode the RC files (default: %s)" % DEFAULTCHARSET, metavar="CHARSET")
-    DEFAULTLANG = "LANG_ENGLISH"
+    DEFAULTLANG = None
     parser.add_option("-l", "--lang", dest="lang", default=DEFAULTLANG,
         help="LANG entry (default: %s)" % DEFAULTLANG, metavar="LANG")
-    DEFAULTSUBLANG = "SUBLANG_DEFAULT"
+    DEFAULTSUBLANG = None
     parser.add_option("", "--sublang", dest="sublang", default=DEFAULTSUBLANG,
         help="SUBLANG entry (default: %s)" % DEFAULTSUBLANG, metavar="SUBLANG")
     parser.add_duplicates_option()
