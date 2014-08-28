@@ -116,6 +116,65 @@ class rcunit(base.TranslationUnit):
         """Returns whether this is a blank element, containing only comments."""
         return not (self.name or self.value)
 
+def rc_statement():
+    """ Generate a RC statement parser that can be used to parse a RC file
+
+    :rtype: pyparsing.ParserElement
+    """
+
+    one_line_comment = '//' + restOfLine
+
+    comments = cStyleComment ^ one_line_comment
+
+    precompiler = Word('#', alphanums) + restOfLine
+
+    language_definition = "LANGUAGE" + Word(alphas + '_').setResultsName(
+        "language") + Optional(',' + Word(alphas + '_').setResultsName("sublanguage"))
+
+    block_start = (Keyword('{') | Keyword("BEGIN")).setName("block_start")
+    block_end = (Keyword('}') | Keyword("END")).setName("block_end")
+
+    reserved_words = block_start | block_end
+
+    name_id = ~reserved_words + \
+        Word(alphas, alphanums + '_').setName("name_id")
+
+    constant = Optional(Keyword("NOT")) + name_id
+
+    combined_constants = delimitedList(constant, '|')
+
+    numbers = Word(nums)
+
+    block_options = Optional(SkipTo(
+        Keyword("CAPTION"), failOn=block_start)("pre_caption") + Keyword("CAPTION") + quotedString("caption")) + SkipTo(block_start)("post_caption")
+
+    undefined_control = Group(name_id.setResultsName(
+        "id_control") + delimitedList(quotedString ^ constant ^ numbers ^ Group(combined_constants)).setResultsName("values_"))
+
+    block = block_start + \
+        ZeroOrMore(undefined_control)("controls") + block_end
+
+    dialog = name_id(
+        "block_id") + (Keyword("DIALOGEX") | Keyword("DIALOG"))("block_type") + block_options + block
+
+    string_table = Keyword("STRINGTABLE")(
+        "block_type") + block_options + block
+
+    menu_item = Keyword(
+        "MENUITEM")("block_type") + (commaSeparatedList("values_") | Keyword("SEPARATOR"))
+
+    popup_block = Forward()
+
+    popup_block <<= Group(Keyword("POPUP")("block_type") + Optional(quotedString("caption")) + block_start +
+                          ZeroOrMore(Group(menu_item | popup_block))("elements") + block_end)("popups*")
+
+    menu = name_id("block_id") + \
+        Keyword("MENU")("block_type") + block_options + \
+        block_start + ZeroOrMore(popup_block) + block_end
+
+    statem = comments ^ precompiler ^ language_definition ^ dialog ^ string_table ^ menu
+
+    return statem
 
 class rcfile(base.TranslationStore):
     """This class represents a .rc file, made up of rcunits."""
@@ -133,66 +192,6 @@ class rcfile(base.TranslationStore):
             inputfile.close()
             self.parse(rcsrc)
 
-    def rc_statement(self):
-        """ Generate a RC statement parser that can be used to parse a RC file
-
-        :rtype: pyparsing.ParserElement
-        """
-
-        one_line_comment = '//' + restOfLine
-
-        comments = cStyleComment ^ one_line_comment
-
-        precompiler = Word('#', alphanums) + restOfLine
-
-        language_definition = "LANGUAGE" + Word(alphas + '_').setResultsName(
-            "language") + Optional(',' + Word(alphas + '_').setResultsName("sublanguage"))
-
-        block_start = (Keyword('{') | Keyword("BEGIN")).setName("block_start")
-        block_end = (Keyword('}') | Keyword("END")).setName("block_end")
-
-        reserved_words = block_start | block_end
-
-        name_id = ~reserved_words + \
-            Word(alphas, alphanums + '_').setName("name_id")
-
-        constant = Optional(Keyword("NOT")) + name_id
-
-        combined_constants = delimitedList(constant, '|')
-
-        numbers = Word(nums)
-
-        block_options = Optional(SkipTo(
-            Keyword("CAPTION"), include=True, failOn=block_start) + quotedString("caption")) + SkipTo(block_start)
-
-        undefined_control = Group(name_id.setResultsName(
-            "id_control") + delimitedList(quotedString ^ constant ^ numbers ^ combined_constants).setResultsName("values_"))
-
-        block = block_start + \
-            ZeroOrMore(undefined_control)("controls") + block_end
-
-        dialog = name_id(
-            "block_id") + (Keyword("DIALOGEX") | Keyword("DIALOG"))("block_type") + block_options + block
-
-        string_table = Keyword("STRINGTABLE")(
-            "block_type") + block_options + block
-
-        menu_item = Keyword(
-            "MENUITEM")("type") + (commaSeparatedList("values_") | Keyword("SEPARATOR"))
-
-        popup_block = Forward()
-
-        popup_block <<= Group(Keyword("POPUP")("type") + Optional(quotedString("caption")) + block_start +
-                              ZeroOrMore(Group(menu_item | popup_block))("elements") + block_end)("popups*")
-
-        menu = name_id("block_id") + \
-            Keyword("MENU")("block_type") + block_options + \
-            block_start + ZeroOrMore(popup_block) + block_end
-
-        statem = comments ^ precompiler ^ language_definition ^ dialog ^ string_table ^ menu
-
-        return statem
-
     def add_popup_units(self, pre_name, popup):
         """Transverses the popup tree making new units as needed."""
 
@@ -204,12 +203,12 @@ class rcfile(base.TranslationStore):
 
         for element in popup.elements:
 
-            if element.type and element.type == "MENUITEM":
+            if element.block_type and element.block_type == "MENUITEM":
 
                 if element.values_ and len(element.values_) >= 2:
                     newunit = rcunit(escape_to_python(element.values_[0][1:-1]))
                     newunit.name = "%s.%s.%s" % (
-                        pre_name, element.type, element.values_[1])
+                        pre_name, element.block_type, element.values_[1])
                     newunit.match = element
                     self.addunit(newunit)
                 # Else it can be a separator.
@@ -222,7 +221,7 @@ class rcfile(base.TranslationStore):
         """Read the source of a .rc file in and include them as units."""
 
         # Parse the strings into a structure.
-        results = self.rc_statement().searchString(rcsrc)
+        results = rc_statement().searchString(rcsrc)
 
         processblocks = False
 

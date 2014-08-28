@@ -17,6 +17,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
+import collections
+import types
 
 """Convert Gettext PO localization files back to Windows Resource (.rc) files.
 
@@ -27,26 +29,196 @@ for examples and usage instructions.
 from translate.convert import convert
 from translate.storage import po, rc
 
+NL = "\n"
+BLOCK_START = "BEGIN"
+BLOCK_END = "END"
 
 class rerc:
 
     def __init__(self, templatefile, charset="utf-8", lang=None, sublang=None):
         self.templatefile = templatefile
-        self.templatestore = rc.rcfile(templatefile, encoding=charset)
         self.inputdict = {}
         self.charset = charset
         self.lang = lang
         self.sublang = sublang
+        
+    def convert_dialog(self, s, loc, toks):
+        out = []
+        out.append(toks.block_id)
+        out.append(" ")
+        out.append(toks.block_type)
+        if toks.caption:
+            out.append(" ")
+            out.append(toks.pre_caption)
+            out.append("CAPTION ") # The string caption
+            out.append(toks.caption)
+            out.extend(toks.post_caption) # The rest of the options
+            out.append(NL)
+        else:
+            out.append(" ")
+            out.extend(toks.post_caption) # The rest of the options
+            out.append(NL)
+        
+        out.append(BLOCK_START)
+        out.append(NL)
+        
+        for c in toks.controls:
+            
+            out.append("    ")
+            if len(c[0]) >= 16:
+                out.append(c[0])
+                # If more than 16 char, put it on a new line to align it.
+                out.append("\n"+" "*(16+4))
+            else:
+                out.append(c[0].ljust(16))
+            
+            tmp = []
+            for a in c[1:]:
+                if isinstance(a, collections.Iterable) and not isinstance(a, types.StringTypes):
+                    tmp.append(" | ".join(a))
+                else:
+                    tmp.append(a)
+            
+            out.append(",".join(tmp))
+            out.append(NL)
+        
+        out.append(BLOCK_END)
+        
+        return out
+
+    def convert_string_table(self, s, loc, toks):
+        out = []
+        out.extend(toks[0:2])
+        out.append(NL)
+        out.append(BLOCK_START)
+        out.append(NL)
+        
+        for c in toks.controls:
+            out.append("    ")
+            if len(c[0]) >= 24:
+                out.append(c[0])
+                out.append("\n"+" "*(24+4))
+            else:
+                out.append(c[0].ljust(24))
+            out.append(",".join(c[1:]))
+            out.append(NL)
+        
+        out.append(BLOCK_END)
+        
+        return out
+
+    def convert_language(self, s, loc, toks):
+        out = []
+        out.append("LANGUAGE ")
+        out.append(self.lang)
+        if self.sublang:
+            out.append(", ")
+            out.append(self.sublang)
+        return out
+
+    def convert_popup(self, popup, ident=1):
+        out = []
+        
+        identation = " " * (4 * ident)
+        
+        out.append(identation)
+        out.append(popup.block_type)
+        if popup.caption:
+            out.append(" ")
+            out.append(popup.pre_caption)
+            out.append(popup.caption)
+            out.extend(popup.post_caption) # The rest of the options
+            out.append(NL)
+        else:
+            out.append(" ")
+            out.extend(popup.post_caption) # The rest of the options
+            out.append(NL)
+        
+        out.append(identation)
+        out.append(BLOCK_START)
+        out.append(NL)
+        
+        for element in popup.elements:
+            
+            if element.block_type and element.block_type == "MENUITEM":
+                out.append(identation)
+                out.append("    MENUITEM")
+                out.append(" ")
+                
+                if element.values_ and len(element.values_) >= 2:
+                    out.append(", ".join(element.values_))
+                elif element.values_[0] == "SEPARATOR":
+                    out.append("SEPARATOR")
+                else:
+                    raise NotImplementedError()
+                
+                out.append(NL)
+                
+            elif element.popups:
+                for sub_popup in element.popups:
+                    out.extend(self.convert_popup(sub_popup, ident+1))
+        out.append(identation)
+        out.append(BLOCK_END)
+        out.append(NL)
+        
+        return out
+
+    def convert_menu(self, s, loc, toks):
+        out = []
+        
+        out.append(toks.block_id)
+        out.append(" ")
+        out.append(toks.block_type)
+        if toks.caption:
+            out.append(" ")
+            out.append(toks.pre_caption)
+            out.append("CAPTION ") # The string caption
+            out.append(toks.caption)
+            out.extend(toks.post_caption) # The rest of the options
+            out.append(NL)
+        else:
+            out.append(" ")
+            out.extend(toks.post_caption) # The rest of the options
+            out.append(NL)
+        
+        out.append(BLOCK_START)
+        out.append(NL)
+        
+        
+        for p in toks.popups:
+            out.extend(self.convert_popup(p))
+        
+        out.append(BLOCK_END)
+        
+        return out
+
+    def translate_strings(self, s, loc, toks):
+        """ Change the strings in the toks by the ones in the translation. """
+        
+        if toks.language:
+            # Recreate the language, but using the settings.
+            return self.convert_language(s, loc, toks)
+        
+        if toks.block_type:
+            if toks.block_type == "DIALOGEX" or toks.block_type == "DIALOG":
+                return self.convert_dialog(s, loc, toks)
+            
+            if toks.block_type == "STRINGTABLE":
+                return self.convert_string_table(s, loc, toks)
+            
+            if toks.block_type == "MENU":
+                return self.convert_menu(s, loc, toks)
+        
+        return toks
 
     def convertstore(self, inputstore, includefuzzy=False):
         self.makestoredict(inputstore, includefuzzy)
-        outputblocks = []
-        for block in self.templatestore.blocks:
-            outputblocks.append(self.convertblock(block))
-        if self.charset == "utf-8":
-            outputblocks.insert(0, "#pragma code_page(65001)\n")
-            outputblocks.append("#pragma code_page(default)")
-        return outputblocks
+        
+        # TODO Parse the file replacing the strings.
+        
+        statement = rc.rc_statement()
+        statement.addParseAction(self.translate_strings)
+        return statement.transformString(self.templatefile.read().decode(self.charset))
 
     def makestoredict(self, store, includefuzzy=False):
         """ make a dictionary of the translations"""
@@ -91,7 +263,7 @@ def convertrc(inputfile, outputfile, templatefile, includefuzzy=False,
     else:
         convertor = rerc(templatefile, charset, lang, sublang)
     outputrclines = convertor.convertstore(inputstore, includefuzzy)
-    outputfile.writelines(outputrclines)
+    outputfile.write(outputrclines.encode('ISO-8859-15'))
     return 1
 
 
