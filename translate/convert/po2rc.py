@@ -33,6 +33,10 @@ NL = "\n"
 BLOCK_START = "BEGIN"
 BLOCK_END = "END"
 
+def is_iterable_but_not_string(o):
+    """Check if object is iterable but not a string."""
+    return isinstance(o, collections.Iterable) and not isinstance(o, types.StringTypes)
+
 class rerc:
 
     def __init__(self, templatefile, charset="utf-8", lang=None, sublang=None):
@@ -51,7 +55,13 @@ class rerc:
             out.append(" ")
             out.append(toks.pre_caption)
             out.append("CAPTION ") # The string caption
-            out.append(toks.caption)
+            
+            name = rc.generate_dialog_caption_name(toks.block_type, toks.block_id[0])
+            if name in self.inputdict:
+                out.append('"' + self.inputdict[name] + '"')
+            else:
+                out.append(toks.caption)
+            
             out.extend(toks.post_caption) # The rest of the options
             out.append(NL)
         else:
@@ -73,13 +83,24 @@ class rerc:
                 out.append(c[0].ljust(16))
             
             tmp = []
-            for a in c[1:]:
-                if isinstance(a, collections.Iterable) and not isinstance(a, types.StringTypes):
+            
+            name = rc.generate_dialog_control_name(toks.block_type, toks.block_id[0], c.id_control[0], c.values_[1])
+            if name in self.inputdict:
+                tmp.append('"')
+                tmp.append(self.inputdict[name])
+                tmp.append('"')
+            elif is_iterable_but_not_string(c[1]):
+                tmp.append(" | ".join(c[1]))
+            else:
+                tmp.append(c[1])
+            
+            for a in c[2:]:
+                if is_iterable_but_not_string(a):
                     tmp.append(" | ".join(a))
                 else:
                     tmp.append(a)
             
-            out.append(",".join(tmp))
+            out.append(u",".join(tmp))
             out.append(NL)
         
         out.append(BLOCK_END)
@@ -100,6 +121,11 @@ class rerc:
                 out.append("\n"+" "*(24+4))
             else:
                 out.append(c[0].ljust(24))
+            
+            name = rc.generate_stringtable_name(c[0])
+            if name in self.inputdict:
+                c[1] = '"' + self.inputdict[name] + '"'
+            
             out.append(",".join(c[1:]))
             out.append(NL)
         
@@ -228,7 +254,7 @@ class rerc:
                     rcstring = unit.target
                     if len(rcstring.strip()) == 0:
                         rcstring = unit.source
-                    self.inputdict[location] = rc.escape_to_rc(rcstring).encode(self.charset)
+                    self.inputdict[location] = rc.escape_to_rc(rcstring)
 
     def convertblock(self, block):
         newblock = block

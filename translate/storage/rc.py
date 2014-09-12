@@ -176,6 +176,41 @@ def rc_statement():
 
     return statem
 
+def generate_stringtable_name(identifier):
+    """Return the name generated for a stringtable element."""
+    return "STRINGTABLE." + identifier
+
+def generate_menu_pre_name(block_type, block_id):
+    """Return the pre-name generated for elements of a menu."""
+    return "%s.%s" % (block_type, block_id)
+
+def generate_popup_pre_name(pre_name, caption):
+    """Return the pre-name generated for subelements of a popup.
+    
+    :param pre_name: The pre_name that already have the popup.
+    :param caption: The caption (whitout quotes) of the popup.
+    
+    :return: The subelements pre-name based in the pre-name of the popup and
+             its caption.
+    """
+    return "%s.%s" % (pre_name, caption.replace(" ", "_"))
+
+def generate_popup_caption_name(pre_name):
+    """Return the name generated for a caption of a popup."""
+    return "%s.POPUP.CAPTION" % (pre_name)
+
+def generate_menuitem_name(pre_name, block_type, identifier):
+    """Return the name generated for a menuitem of a popup."""
+    return "%s.%s.%s" % (pre_name, block_type, identifier)
+
+def generate_dialog_caption_name(block_type, identifier):
+    """Return the name generated for a caption of a dialog."""
+    return "%s.%s.%s" % (block_type, identifier, "CAPTION")
+
+def generate_dialog_control_name(block_type, block_id, control_type, identifier):
+    """Return the name generated for a control of a dialog."""
+    return "%s.%s.%s.%s" % (block_type, block_id, control_type, identifier);
+
 class rcfile(base.TranslationStore):
     """This class represents a .rc file, made up of rcunits."""
     UnitClass = rcunit
@@ -197,7 +232,7 @@ class rcfile(base.TranslationStore):
 
         if popup.caption:
             newunit = rcunit(escape_to_python(popup.caption[1:-1]))
-            newunit.name = "%s.POPUP.CAPTION" % (pre_name)
+            newunit.name = generate_popup_caption_name(pre_name)
             newunit.match = popup
             self.addunit(newunit)
 
@@ -207,15 +242,13 @@ class rcfile(base.TranslationStore):
 
                 if element.values_ and len(element.values_) >= 2:
                     newunit = rcunit(escape_to_python(element.values_[0][1:-1]))
-                    newunit.name = "%s.%s.%s" % (
-                        pre_name, element.block_type, element.values_[1])
+                    newunit.name = generate_menuitem_name(pre_name, element.block_type, element.values_[1])
                     newunit.match = element
                     self.addunit(newunit)
                 # Else it can be a separator.
             elif element.popups:
                 for sub_popup in element.popups:
-                    self.add_popup_units(
-                        "%s.%s" % (pre_name, popup.caption[1:-1].replace(" ", "_")), sub_popup)
+                    self.add_popup_units(generate_popup_pre_name(pre_name, popup.caption[1:-1]), sub_popup)
 
     def parse(self, rcsrc):
         """Read the source of a .rc file in and include them as units."""
@@ -244,8 +277,7 @@ class rcfile(base.TranslationStore):
 
                     if statement.caption:
                         newunit = rcunit(escape_to_python(statement.caption[1:-1]))
-                        newunit.name = "%s.%s.%s" % (
-                            statement.block_type, statement.block_id[0], "CAPTION")
+                        newunit.name = generate_dialog_caption_name(statement.block_type, statement.block_id[0])
                         newunit.match = statement
                         self.addunit(newunit)
 
@@ -257,8 +289,7 @@ class rcfile(base.TranslationStore):
                             # The first value without quoted chars.
                             newunit = rcunit(
                                 escape_to_python(control.values_[0][1:-1]))
-                            newunit.name = "%s.%s.%s.%s" % (
-                                statement.block_type, statement.block_id[0], control.id_control[0], control.values_[1])
+                            newunit.name = generate_dialog_control_name(statement.block_type, statement.block_id[0], control.id_control[0], control.values_[1])
                             newunit.match = control
                             self.addunit(newunit)
 
@@ -266,8 +297,7 @@ class rcfile(base.TranslationStore):
 
                 if statement.block_type in ("MENU"):
 
-                    pre_name = "%s.%s" % (
-                        statement.block_type, statement.block_id[0])
+                    pre_name = generate_menu_pre_name(statement.block_type, statement.block_id[0])
 
                     for popup in statement.popups:
 
@@ -280,7 +310,7 @@ class rcfile(base.TranslationStore):
                     for text in statement.controls:
 
                         newunit = rcunit(escape_to_python(text.values_[0][1:-1]))
-                        newunit.name = "STRINGTABLE." + text.id_control[0]
+                        newunit.name = generate_stringtable_name(text.id_control[0])
                         newunit.match = text
                         self.addunit(newunit)
 
