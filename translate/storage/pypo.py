@@ -18,6 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
+from _collections import defaultdict
 
 """Classes that hold units of Gettext .po files (pounit) or entire
 files (pofile).
@@ -776,6 +777,7 @@ class pofile(pocommon.pofile):
         # TODO: can we handle consecutive calls to removeduplicates()? What
         # about files already containing msgctxt? - test
         id_dict = {}
+        context_dict = defaultdict(list)
         uniqueunits = []
         # TODO: this is using a list as the pos aren't hashable, but this is slow.
         # probably not used frequently enough to worry about it, though.
@@ -803,7 +805,10 @@ class pofile(pocommon.pofile):
                         origpo.msgctxt.append('"%s"' % escapeforpo(" ".join(origpo.getlocations())))
                         markedpos.append(thepo)
                     thepo.msgctxt.append('"%s"' % escapeforpo(" ".join(thepo.getlocations())))
-                    uniqueunits.append(thepo)
+                    if id not in context_dict or thepo.msgctxt not in context_dict[id]:
+                        # if we didn't added one like it before, we need to add it
+                        uniqueunits.append(thepo)
+                        context_dict[id].append(thepo.msgctxt)
             else:
                 if not id:
                     if duplicatestyle == "merge":
@@ -812,6 +817,7 @@ class pofile(pocommon.pofile):
                         thepo.msgctxt.append('"%s"' % escapeforpo(" ".join(thepo.getlocations())))
                 id_dict[id] = thepo
                 uniqueunits.append(thepo)
+                context_dict[id].append(thepo.msgctxt)
         self.units = uniqueunits
 
     def __str__(self):
