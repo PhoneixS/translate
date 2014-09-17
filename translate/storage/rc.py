@@ -33,7 +33,7 @@ from translate.storage import base
 
 from pyparsing import restOfLine, cStyleComment, Word, alphanums, alphas,\
     Optional, SkipTo, ZeroOrMore, Group, Keyword, quotedString, delimitedList,\
-    nums, commaSeparatedList, Forward
+    nums, commaSeparatedList, Forward, Combine
 
 
 def escape_to_python(string):
@@ -139,7 +139,7 @@ def rc_statement():
     name_id = ~reserved_words + \
         Word(alphas, alphanums + '_').setName("name_id")
 
-    constant = Optional(Keyword("NOT")) + name_id
+    constant = Combine(Optional(Keyword("NOT")) + name_id, adjacent=False, joinString=' ')
 
     combined_constants = delimitedList(constant, '|')
 
@@ -287,8 +287,8 @@ class rcfile(base.TranslationStore):
                                 and (control.values_[0].startswith('"') or control.values_[0].startswith("'")):
 
                             # The first value without quoted chars.
-                            newunit = rcunit(
-                                escape_to_python(control.values_[0][1:-1]))
+                            escaped_value = escape_to_python(control.values_[0][1:-1]);
+                            newunit = rcunit(escaped_value)
                             newunit.name = generate_dialog_control_name(statement.block_type, statement.block_id[0], control.id_control[0], control.values_[1])
                             newunit.match = control
                             self.addunit(newunit)

@@ -19,6 +19,9 @@
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
 import collections
 import types
+from __builtin__ import dict
+from translate.storage.rc import generate_popup_caption_name,\
+    generate_popup_pre_name, generate_menu_pre_name
 
 """Convert Gettext PO localization files back to Windows Resource (.rc) files.
 
@@ -32,6 +35,8 @@ from translate.storage import po, rc
 NL = "\n"
 BLOCK_START = "BEGIN"
 BLOCK_END = "END"
+
+EMPTY_LOCATION = ""
 
 def is_iterable_but_not_string(o):
     """Check if object is iterable but not a string."""
@@ -57,8 +62,12 @@ class rerc:
             out.append("CAPTION ") # The string caption
             
             name = rc.generate_dialog_caption_name(toks.block_type, toks.block_id[0])
-            if name in self.inputdict:
-                out.append('"' + self.inputdict[name] + '"')
+            msgid = toks.caption[1:-1]
+            if msgid in self.inputdict:
+                if name in self.inputdict[msgid]:
+                    out.append('"' + self.inputdict[msgid][name] + '"')
+                elif EMPTY_LOCATION in self.inputdict[msgid]:
+                    out.append('"' + self.inputdict[msgid][EMPTY_LOCATION] + '"')
             else:
                 out.append(toks.caption)
             
@@ -85,10 +94,12 @@ class rerc:
             tmp = []
             
             name = rc.generate_dialog_control_name(toks.block_type, toks.block_id[0], c.id_control[0], c.values_[1])
-            if name in self.inputdict:
-                tmp.append('"')
-                tmp.append(self.inputdict[name])
-                tmp.append('"')
+            msgid = c[1][1:-1]
+            if c[1].startswith(("'", '"')) and msgid in self.inputdict:
+                if name in self.inputdict[msgid]:
+                    tmp.append('"' + self.inputdict[msgid][name] + '"')
+                elif EMPTY_LOCATION in self.inputdict[msgid]:
+                    tmp.append('"' + self.inputdict[msgid][EMPTY_LOCATION] + '"')
             elif is_iterable_but_not_string(c[1]):
                 tmp.append(" | ".join(c[1]))
             else:
@@ -123,8 +134,12 @@ class rerc:
                 out.append(c[0].ljust(24))
             
             name = rc.generate_stringtable_name(c[0])
-            if name in self.inputdict:
-                c[1] = '"' + self.inputdict[name] + '"'
+            msgid = c[1][1:-1]
+            if msgid in self.inputdict:
+                if name in self.inputdict[msgid]:
+                    c[1] = '"' + self.inputdict[msgid][name] + '"'
+                elif EMPTY_LOCATION in self.inputdict[msgid]:
+                    c[1] = '"' + self.inputdict[msgid][EMPTY_LOCATION] + '"'
             
             out.append(",".join(c[1:]))
             out.append(NL)
@@ -142,7 +157,7 @@ class rerc:
             out.append(self.sublang)
         return out
 
-    def convert_popup(self, popup, ident=1):
+    def convert_popup(self, popup, pre_name, ident=1):
         out = []
         
         identation = " " * (4 * ident)
@@ -152,7 +167,15 @@ class rerc:
         if popup.caption:
             out.append(" ")
             out.append(popup.pre_caption)
-            out.append(popup.caption)
+            name = generate_popup_caption_name(pre_name)
+            msgid = popup.caption[1:-1]
+            if msgid in self.inputdict:
+                if name in self.inputdict[msgid]:
+                    out.append('"' + self.inputdict[msgid][name] + '"')
+                elif EMPTY_LOCATION in self.inputdict[msgid]:
+                    out.append('"' + self.inputdict[msgid][EMPTY_LOCATION] + '"')
+            else:
+                out.append(popup.caption)
             out.extend(popup.post_caption) # The rest of the options
             out.append(NL)
         else:
@@ -170,19 +193,28 @@ class rerc:
                 out.append(identation)
                 out.append("    MENUITEM")
                 out.append(" ")
-                
+
                 if element.values_ and len(element.values_) >= 2:
+
+                    name = rc.generate_menuitem_name(pre_name, element.block_type, element.values_[1])
+                    msgid = element.values_[0][1:-1]
+                    if msgid in self.inputdict:
+                        if name in self.inputdict[msgid]:
+                            element.values_[0] = '"' + self.inputdict[msgid][name] + '"'
+                        elif EMPTY_LOCATION in self.inputdict[msgid]:
+                            element.values_[0] = '"' + self.inputdict[msgid][EMPTY_LOCATION] + '"'
+
                     out.append(", ".join(element.values_))
                 elif element.values_[0] == "SEPARATOR":
                     out.append("SEPARATOR")
                 else:
                     raise NotImplementedError()
-                
+
                 out.append(NL)
-                
+
             elif element.popups:
                 for sub_popup in element.popups:
-                    out.extend(self.convert_popup(sub_popup, ident+1))
+                    out.extend(self.convert_popup(sub_popup, generate_popup_pre_name(pre_name, popup.caption[1:-1]), ident+1))
         out.append(identation)
         out.append(BLOCK_END)
         out.append(NL)
@@ -195,24 +227,19 @@ class rerc:
         out.append(toks.block_id)
         out.append(" ")
         out.append(toks.block_type)
-        if toks.caption:
-            out.append(" ")
-            out.append(toks.pre_caption)
-            out.append("CAPTION ") # The string caption
-            out.append(toks.caption)
-            out.extend(toks.post_caption) # The rest of the options
-            out.append(NL)
-        else:
-            out.append(" ")
-            out.extend(toks.post_caption) # The rest of the options
-            out.append(NL)
+        
+        # A menu can't have CAPTION, so don't try to translate it.
+        out.append(" ")
+        out.extend(toks.post_caption) # The rest of the options
+        out.append(NL)
         
         out.append(BLOCK_START)
         out.append(NL)
         
+        pre_name = generate_menu_pre_name(toks.block_type, toks.block_id[0])
         
         for p in toks.popups:
-            out.extend(self.convert_popup(p))
+            out.extend(self.convert_popup(p, pre_name))
         
         out.append(BLOCK_END)
         
@@ -239,9 +266,6 @@ class rerc:
 
     def convertstore(self, inputstore, includefuzzy=False):
         self.makestoredict(inputstore, includefuzzy)
-        
-        # TODO Parse the file replacing the strings.
-        
         statement = rc.rc_statement()
         statement.addParseAction(self.translate_strings)
         return statement.transformString(self.templatefile.read().decode(self.charset))
@@ -250,11 +274,21 @@ class rerc:
         """ make a dictionary of the translations"""
         for unit in store.units:
             if includefuzzy or not unit.isfuzzy():
-                for location in unit.getlocations():
-                    rcstring = unit.target
-                    if len(rcstring.strip()) == 0:
-                        rcstring = unit.source
-                    self.inputdict[location] = rc.escape_to_rc(rcstring)
+
+                rcstring = unit.target
+                if len(rcstring.strip()) == 0:
+                    rcstring = unit.source
+                
+                escaped_source = rc.escape_to_rc(unit.source)
+
+                if not escaped_source in self.inputdict:
+                    self.inputdict[escaped_source] = dict()
+                
+                if len(unit.getlocations()) == 0:
+                    self.inputdict[escaped_source][EMPTY_LOCATION] = rc.escape_to_rc(rcstring)
+                else:
+                    for location in unit.getlocations():
+                        self.inputdict[escaped_source][location] = rc.escape_to_rc(rcstring)
 
     def convertblock(self, block):
         newblock = block
