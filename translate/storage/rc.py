@@ -146,12 +146,14 @@ def rc_statement():
     name_id = ~reserved_words + \
         Word(alphas, alphanums + '_').setName("name_id")
 
+    numbers = Word(nums)
+    
+    integerconstant = numbers ^ Combine('0x' + numbers)
+    
     constant = Combine(
-        Optional(Keyword("NOT")) + name_id, adjacent=False, joinString=' ')
+        Optional(Keyword("NOT")) + (name_id | integerconstant), adjacent=False, joinString=' ')
 
     combined_constants = delimitedList(constant, '|')
-
-    numbers = Word(nums)
 
     block_options = Optional(SkipTo(
         Keyword("CAPTION"), failOn=block_start)("pre_caption") + Keyword("CAPTION") + quotedString("caption")) + SkipTo(block_start)("post_caption")
